@@ -2,7 +2,7 @@ generator_ckpt: checkpoints/ode_init.pt
 generator_fsdp_wrap_strategy: size
 real_score_fsdp_wrap_strategy: size
 fake_score_fsdp_wrap_strategy: size
-real_name: Wan2.1-T2V-14B
+real_name: Wan2.1-T2V-1.3B
 text_encoder_fsdp_wrap_strategy: size
 denoising_step_list:
 - 1000
@@ -17,10 +17,10 @@ guidance_scale: 3.0
 denoising_loss_type: flow
 mixed_precision: true
 seed: 0
-wandb_host: WANDB_HOST
-wandb_key: WANDB_KEY
-wandb_entity: WANDB_ENTITY
-wandb_project: WANDB_PROJECT
+wandb_host: https://api.wandb.ai
+wandb_key: 8d9f4b39abd68eb4e29f6fc010b7ee71a2207cde
+wandb_entity: wlsaidhi
+wandb_project: wan_ode_init
 sharding_strategy: hybrid_full
 lr: 2.0e-06
 lr_critic: 4.0e-07
@@ -44,7 +44,7 @@ image_or_video_shape:
 - 104
 distribution_loss: dmd
 trainer: score_distillation
-gradient_checkpointing: true
+gradient_checkpointing: false
 num_frame_per_block: 3
 load_raw_video: false
 model_kwargs:

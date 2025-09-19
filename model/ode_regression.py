@@ -87,6 +87,8 @@ class ODERegression(BaseModel):
                 -1, -1, -1, num_channels, height, width).to(self.device)
         ).squeeze(1)
 
+
+        index = index.cpu()
         timestep = self.denoising_step_list[index].to(self.device)
 
         # if self.extra_noise_step > 0:

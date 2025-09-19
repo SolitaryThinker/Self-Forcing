@@ -1,8 +1,8 @@
-from utils.distributed import launch_distributed_job
+# from utils.distributed import launch_distributed_job
 from utils.scheduler import FlowMatchScheduler
 from utils.wan_wrapper import WanDiffusionWrapper, WanTextEncoder
 from utils.dataset import TextDataset
-import torch.distributed as dist
+# import torch.distributed as dist
 from tqdm import tqdm
 import argparse
 import torch
@@ -11,12 +11,13 @@ import os
 
 
 def init_model(device):
+    print("init_model")
     model = WanDiffusionWrapper().to(device).to(torch.float32)
     encoder = WanTextEncoder().to(device).to(torch.float32)
     model.model.requires_grad_(False)
 
     scheduler = FlowMatchScheduler(
-        shift=8.0, sigma_min=0.0, extra_one_step=True)
+        shift=5.0, sigma_min=0.0, extra_one_step=True)
     scheduler.set_timesteps(num_inference_steps=48, denoising_strength=1.0)
     scheduler.sigmas = scheduler.sigmas.to(device)
 
@@ -34,12 +35,12 @@ def main():
     parser.add_argument("--local_rank", type=int, default=-1)
     parser.add_argument("--output_folder", type=str)
     parser.add_argument("--caption_path", type=str)
-    parser.add_argument("--guidance_scale", type=float, default=6.0)
+    parser.add_argument("--guidance_scale", type=float, default=3.0)
 
     args = parser.parse_args()
 
     # launch_distributed_job()
-    launch_distributed_job()
+    # launch_distributed_job()
 
     device = torch.cuda.current_device()
 
@@ -54,13 +55,16 @@ def main():
     # if global_rank == 0:
     os.makedirs(args.output_folder, exist_ok=True)
 
-    for index in tqdm(range(int(math.ceil(len(dataset) / dist.get_world_size()))), disable=dist.get_rank() != 0):
-        prompt_index = index * dist.get_world_size() + dist.get_rank()
+    # for index in tqdm(range(int(math.ceil(len(dataset) / dist.get_world_size()))), disable=dist.get_rank() != 0):
+    for index in tqdm(range(len(dataset))):
+        prompt_index = index # * dist.get_world_size() + dist.get_rank()
         if prompt_index >= len(dataset):
             continue
         prompt = dataset[prompt_index]
+        # print(prompt)
 
         conditional_dict = encoder(text_prompts=prompt)
+        # print(conditional_dict["prompt_embeds"].shape)
 
         latents = torch.randn(
             [1, 21, 16, 60, 104], dtype=torch.float32, device=device
@@ -74,6 +78,9 @@ def main():
 
             noisy_input.append(latents)
 
+            # print(f"t: {t}")
+            # print(f"conditional_dict: {conditional_dict['prompt_embeds'].shape}")
+            # print(f"unconditional_dict: {unconditional_dict['prompt_embeds'].shape}")
             _, x0_pred_cond = model(
                 latents, conditional_dict, timestep
             )
@@ -108,12 +115,25 @@ def main():
 
         stored_data = noisy_inputs
 
+        # this is what SF expects
+        # torch.save(
+        #     {prompt["prompts"]: stored_data_sf.cpu().detach()
+        #     },
+        #     os.path.join(args.output_folder, f"{prompt_index:05d}.pt")
+        # )
+
         torch.save(
-            {prompt: stored_data.cpu().detach()},
+            {"prompts": prompt["prompts"], 
+            "ode_latent": stored_data.cpu().detach(),
+            "text_embedding": conditional_dict["prompt_embeds"],
+            "negative_text_embedding": unconditional_dict["prompt_embeds"],
+            # prompt["prompts"]: stored_data_sf.cpu().detach()
+            },
             os.path.join(args.output_folder, f"{prompt_index:05d}.pt")
         )
+        # break
 
-    dist.barrier()
+    # dist.barrier()
 
 
 if __name__ == "__main__":
