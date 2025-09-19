@@ -30,7 +30,6 @@ huggingface_hub[cli]
 dominate
 nvidia-pyindex
 nvidia-tensorrt
-pycuda
 onnx
 onnxruntime
 onnxscript

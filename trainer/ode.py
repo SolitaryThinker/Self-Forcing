@@ -132,7 +132,7 @@ class Trainer:
                   f"checkpoint_model_{self.step:06d}", "model.pt"))
 
     def train_one_step(self):
-        VISUALIZE = self.step % 100 == 0
+        VISUALIZE = self.step % 10 == 0
         self.model.eval()  # prevent any randomness (e.g. dropout)
 
         # Step 1: Get the next batch of text prompts
