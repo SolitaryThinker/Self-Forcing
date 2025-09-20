@@ -119,16 +119,38 @@ class WanDiffusionWrapper(torch.nn.Module):
             timestep_shift=8.0,
             is_causal=False,
             local_attn_size=-1,
-            sink_size=0
+            sink_size=0,
+            moe=False,
+            boundary_ratio=0.875,
     ):
         super().__init__()
 
-        if is_causal:
-            self.model = CausalWanModel.from_pretrained(
-                f"wan_models/{model_name}/", local_attn_size=local_attn_size, sink_size=sink_size)
+        self.moe = moe
+        self.current_model_noise_level = 'high'
+        self.boundary_ratio = boundary_ratio
+        if not moe:
+            if is_causal:
+                self.model = CausalWanModel.from_pretrained(
+                    f"wan_models/{model_name}/", local_attn_size=local_attn_size, sink_size=sink_size)
+            else:
+                self.model = WanModel.from_pretrained(f"wan_models/{model_name}/")
+            self.model.eval()
         else:
-            self.model = WanModel.from_pretrained(f"wan_models/{model_name}/")
-        self.model.eval()
+            print("MOE Model")
+            # assert model_name == "Wan2.2-T2V-A14B"
+            self.guidance_scale_high = 4.0
+            self.guidance_scale_low = 3.0
+            if is_causal:
+                self.high_noise_model = CausalWanModel.from_pretrained(
+                    f"/mnt/sharefs/users/hao.zhang/wl/models/Wan2.2-T2V-A14B/high_noise_model", local_attn_size=local_attn_size, sink_size=sink_size, moe=True)
+                self.low_noise_model = CausalWanModel.from_pretrained(
+                    f"/mnt/sharefs/users/hao.zhang/wl/models/Wan2.2-T2V-A14B/low_noise_model", local_attn_size=local_attn_size, sink_size=sink_size)
+            else:
+                self.high_noise_model = WanModel.from_pretrained(f"/mnt/sharefs/users/hao.zhang/wl/models/Wan2.2-T2V-A14B/high_noise_model")
+                self.low_noise_model = WanModel.from_pretrained(f"/mnt/sharefs/users/hao.zhang/wl/models/Wan2.2-T2V-A14B/low_noise_model")
+            self.high_noise_model.eval()
+            self.low_noise_model.eval()
+            self.model = self.high_noise_model
 
         # For non-causal diffusion, all frames share the same timestep
         self.uniform_timestep = not is_causal
@@ -214,6 +236,14 @@ class WanDiffusionWrapper(torch.nn.Module):
         sigma_t = sigmas[timestep_id].reshape(-1, 1, 1, 1)
         flow_pred = (xt - x0_pred) / sigma_t
         return flow_pred.to(original_dtype)
+    
+    def get_guidance_scale(self):
+        if self.current_model_noise_level == 'high':
+            print("Using high noise model guidance_scale")
+            return self.guidance_scale_high
+        else:
+            print("Using low noise model guidance_scale")
+            return self.guidance_scale_low
 
     def forward(
         self,
@@ -234,6 +264,23 @@ class WanDiffusionWrapper(torch.nn.Module):
             input_timestep = timestep[:, 0]
         else:
             input_timestep = timestep
+
+        # if self.moe:
+            # ref = timestep[:, :1].expand_as(input_timestep)
+            # assert torch.allclose(ref, timestep)
+        print(f"input_timestep: {input_timestep}")
+        print(f"input_timestep.shape: {input_timestep.shape}")
+        # print(f"timestep: {timestep}")
+
+        if input_timestep >= self.boundary_ratio*1000:
+            print("Using high noise model")
+            self.current_model_noise_level = 'high'
+            self.model = self.high_noise_model
+        else:
+            print("Using low noise model")
+            self.current_model_noise_level = 'low'
+            self.model = self.low_noise_model
+
 
         logits = None
         # X0 prediction
