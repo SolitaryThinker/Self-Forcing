@@ -272,14 +272,15 @@ class WanDiffusionWrapper(torch.nn.Module):
         print(f"input_timestep.shape: {input_timestep.shape}")
         # print(f"timestep: {timestep}")
 
-        if input_timestep >= self.boundary_ratio*1000:
-            print("Using high noise model")
-            self.current_model_noise_level = 'high'
-            self.model = self.high_noise_model
-        else:
-            print("Using low noise model")
-            self.current_model_noise_level = 'low'
-            self.model = self.low_noise_model
+        if self.moe:
+            if input_timestep >= self.boundary_ratio*1000:
+                print("Using high noise model")
+                self.current_model_noise_level = 'high'
+                self.model = self.high_noise_model
+            else:
+                print("Using low noise model")
+                self.current_model_noise_level = 'low'
+                self.model = self.low_noise_model
 
 
         logits = None

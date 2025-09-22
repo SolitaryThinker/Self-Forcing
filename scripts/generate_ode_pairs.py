@@ -63,7 +63,7 @@ def main():
         prompt = dataset[prompt_index]
         # print(prompt)
 
-        conditional_dict = encoder(text_prompts=prompt)
+        conditional_dict = encoder(text_prompts=[prompt["prompts"]])
         # print(conditional_dict["prompt_embeds"].shape)
 
         latents = torch.randn(
@@ -72,6 +72,9 @@ def main():
 
         noisy_input = []
 
+        print(f"full scheduler.timesteps: {scheduler.timesteps}")
+        print(f"selected scheduler.timesteps: {scheduler.timesteps[[0,12,24,36,-1]]}")
+        # noisy_inputs = noisy_inputs[:, [0, 12, 24, 36, -1]]
         for progress_id, t in enumerate(tqdm(scheduler.timesteps)):
             timestep = t * \
                 torch.ones([1, 21], device=device, dtype=torch.float32)
@@ -116,11 +119,12 @@ def main():
         stored_data = noisy_inputs
 
         # this is what SF expects
-        # torch.save(
-        #     {prompt["prompts"]: stored_data_sf.cpu().detach()
-        #     },
-        #     os.path.join(args.output_folder, f"{prompt_index:05d}.pt")
-        # )
+
+        torch.save(
+            {prompt["prompts"]: stored_data.cpu().detach()
+            },
+            os.path.join("ode_pt_vidprom_1000_sf", f"{prompt_index:05d}.pt")
+        )
 
         torch.save(
             {"prompts": prompt["prompts"], 

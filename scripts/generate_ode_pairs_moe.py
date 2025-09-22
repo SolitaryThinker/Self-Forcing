@@ -66,9 +66,24 @@ def main():
 
     # if global_rank == 0
     os.makedirs(args.output_folder, exist_ok=True)
+    # the output folder contains a single .pt file for each prompt, named as the prompt {index:05d}.pt
+    # I am restarting the job, so I need to index into dataset starting from the last index
+    # determine next start index locally by scanning existing files in the output folder
+    existing = [f for f in os.listdir(args.output_folder) if f.endswith('.pt')]
+    existing_indices = []
+    for f in existing:
+        stem, ext = os.path.splitext(f)
+        if len(stem) == 5 and stem.isdigit():
+            existing_indices.append(int(stem))
+    start_index = (max(existing_indices) + 1) if len(existing_indices) > 0 else 0
+    print(f"Resuming from index {start_index} (0-based) in {args.output_folder}")
+
+    if start_index >= len(dataset):
+        print("All prompts already processed for this local GPU directory.")
+        return
 
     # for index in tqdm(range(int(math.ceil(len(dataset) / dist.get_world_size()))), disable=dist.get_rank() != 0):
-    for index in tqdm(range(len(dataset))):
+    for index in tqdm(range(start_index, len(dataset))):
         prompt_index = index # * dist.get_world_size() + dist.get_rank()
         if prompt_index >= len(dataset):
             continue
