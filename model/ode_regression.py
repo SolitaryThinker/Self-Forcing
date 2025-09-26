@@ -1,6 +1,7 @@
 import torch.nn.functional as F
 from typing import Tuple
 import torch
+import torch.distributed as dist
 
 from model.base import BaseModel
 from utils.wan_wrapper import WanDiffusionWrapper, WanTextEncoder, WanVAEWrapper
@@ -19,8 +20,14 @@ class ODERegression(BaseModel):
 
         # Step 1: Initialize all models
 
+        # print('args.real_name', args.real_name)
         self.generator = WanDiffusionWrapper(**getattr(args, "model_kwargs", {}), is_causal=True)
-        self.generator.model.requires_grad_(True)
+        # Enable gradients on experts for MoE; otherwise enable on the single model
+        if self.moe:
+            self.generator.high_noise_model.requires_grad_(True)
+            self.generator.low_noise_model.requires_grad_(True)
+        else:
+            self.generator.model.requires_grad_(True)
         if getattr(args, "generator_ckpt", False):
             print(f"Loading pretrained generator from {args.generator_ckpt}")
             state_dict = torch.load(args.generator_ckpt, map_location="cpu")[
@@ -46,6 +53,9 @@ class ODERegression(BaseModel):
     def _initialize_models(self, args, device):
         self.generator = WanDiffusionWrapper(**getattr(args, "model_kwargs", {}), is_causal=True)
         self.generator.model.requires_grad_(True)
+        if self.generator.moe:
+            self.generator.high_noise_model.requires_grad_(True)
+            self.generator.low_noise_model.requires_grad_(True)
 
         self.text_encoder = WanTextEncoder()
         self.text_encoder.requires_grad_(False)
@@ -57,7 +67,7 @@ class ODERegression(BaseModel):
         self.scheduler.timesteps = self.scheduler.timesteps.to(device)
 
     @torch.no_grad()
-    def _prepare_generator_input(self, ode_latent: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _prepare_generator_input(self, ode_latent: torch.Tensor, denoising_step_list: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Given a tensor containing the whole ODE sampling trajectories,
         randomly choose an intermediate timestep and return the latent as well as the corresponding timestep.
@@ -72,14 +82,14 @@ class ODERegression(BaseModel):
         # Step 1: Randomly choose a timestep for each frame
         index = self._get_timestep(
             0,
-            len(self.denoising_step_list),
+            len(denoising_step_list),
             batch_size,
             num_frames,
             self.num_frame_per_block,
             uniform_timestep=False
         )
         if self.args.i2v:
-            index[:, 0] = len(self.denoising_step_list) - 1
+            index[:, 0] = len(denoising_step_list) - 1
 
         noisy_input = torch.gather(
             ode_latent, dim=1,
@@ -89,7 +99,7 @@ class ODERegression(BaseModel):
 
 
         index = index.cpu()
-        timestep = self.denoising_step_list[index].to(self.device)
+        timestep = denoising_step_list[index].to(self.device)
 
         # if self.extra_noise_step > 0:
         #     random_timestep = torch.randint(0, self.extra_noise_step, [
@@ -118,13 +128,32 @@ class ODERegression(BaseModel):
         # Step 1: Run generator on noisy latents
         target_latent = ode_latent[:, -1]
 
+        if self.moe:
+            is_high_noise = torch.randint(0, 2, [1], device=self.device)
+            dist.broadcast(is_high_noise, src=0)
+            is_high_noise = is_high_noise.item()
+
+            print(f"is_high_noise: {is_high_noise}")
+
+            denoising_step_list = self.denoising_step_list_high if is_high_noise == 1 else self.denoising_step_list_low
+            print(f"denoising_step_list: {denoising_step_list}")
+        else:
+            denoising_step_list = self.denoising_step_list
+            is_high_noise = None
+
+
+
         noisy_input, timestep = self._prepare_generator_input(
-            ode_latent=ode_latent)
+            ode_latent=ode_latent,
+            denoising_step_list=denoising_step_list
+        )
 
         _, pred_image_or_video = self.generator(
             noisy_image_or_video=noisy_input,
             conditional_dict=conditional_dict,
-            timestep=timestep
+            timestep=timestep,
+            force_high_noise=self.moe and is_high_noise == 1,
+            force_low_noise=self.moe and is_high_noise == 0
         )
 
         # Step 2: Compute the regression loss

@@ -18,6 +18,11 @@ from utils.distributed import barrier, fsdp_wrap, fsdp_state_dict, launch_distri
 
 class Trainer:
     def __init__(self, config):
+        print('===============================================')
+        print('===============================================')
+        print('creating ode trainer with config: ', config)
+        print('===============================================')
+        print('===============================================')
         self.config = config
         self.step = 0
 
@@ -60,12 +65,29 @@ class Trainer:
         assert config.distribution_loss == "ode", "Only ODE loss is supported for ODE training"
         self.model = ODERegression(config, device=self.device)
 
-        self.model.generator = fsdp_wrap(
-            self.model.generator,
-            sharding_strategy=config.sharding_strategy,
-            mixed_precision=config.mixed_precision,
-            wrap_strategy=config.generator_fsdp_wrap_strategy
-        )
+        if self.model.moe:
+            self.model.generator.high_noise_model = fsdp_wrap(
+                self.model.generator.high_noise_model,
+                sharding_strategy=config.sharding_strategy,
+                mixed_precision=config.mixed_precision,
+                wrap_strategy=config.generator_fsdp_wrap_strategy,
+                cpu_offload=getattr(config, "generator_cpu_offload", False)
+            )
+            self.model.generator.low_noise_model = fsdp_wrap(
+                self.model.generator.low_noise_model,
+                sharding_strategy=config.sharding_strategy,
+                mixed_precision=config.mixed_precision,
+                wrap_strategy=config.generator_fsdp_wrap_strategy,
+                cpu_offload=getattr(config, "generator_cpu_offload", False)
+            )
+        else:
+            self.model.generator = fsdp_wrap(
+                self.model.generator,
+                sharding_strategy=config.sharding_strategy,
+                mixed_precision=config.mixed_precision,
+                wrap_strategy=config.generator_fsdp_wrap_strategy,
+                cpu_offload=getattr(config, "generator_cpu_offload", False)
+            )
         self.model.text_encoder = fsdp_wrap(
             self.model.text_encoder,
             sharding_strategy=config.sharding_strategy,
@@ -93,6 +115,7 @@ class Trainer:
             dataset, shuffle=True, drop_last=True)
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=config.batch_size, sampler=sampler, num_workers=8)
+        print(f"dataset loaded len: {len(dataset)}")
         total_batch_size = getattr(config, "total_batch_size", None)
         if total_batch_size is not None:
             assert total_batch_size == config.batch_size * self.world_size, "Gradient accumulation is not supported for ODE training"
@@ -114,37 +137,76 @@ class Trainer:
 
         self.max_grad_norm = 10.0
         self.previous_time = None
+        print(f"init barrier")
+        dist.barrier()
+        print(f"init barrier done")
 
     def save(self):
         print("Start gathering distributed model states...")
-        generator_state_dict = fsdp_state_dict(
-            self.model.generator)
-        state_dict = {
-            "generator": generator_state_dict
-        }
+        if not self.model.moe:
+            print("Saving non-MoE model")
+            generator_state_dict = fsdp_state_dict(
+                self.model.generator)
+            state_dict = {
+                "generator": generator_state_dict
+            }
 
-        if self.is_main_process:
-            os.makedirs(os.path.join(self.output_path,
-                        f"checkpoint_model_{self.step:06d}"), exist_ok=True)
-            torch.save(state_dict, os.path.join(self.output_path,
-                       f"checkpoint_model_{self.step:06d}", "model.pt"))
-            print("Model saved to", os.path.join(self.output_path,
-                  f"checkpoint_model_{self.step:06d}", "model.pt"))
+            if self.is_main_process:
+                os.makedirs(os.path.join(self.output_path,
+                            f"checkpoint_model_{self.step:06d}"), exist_ok=True)
+                torch.save(state_dict, os.path.join(self.output_path,
+                        f"checkpoint_model_{self.step:06d}", "model.pt"))
+                print("Model saved to", os.path.join(self.output_path,
+                    f"checkpoint_model_{self.step:06d}", "model.pt"))
+        else:
+            print("Saving MoE model")
+            generator_state_dict = fsdp_state_dict(
+                self.model.generator.high_noise_model)
+            state_dict = {
+                "generator": generator_state_dict
+            }
+            if self.is_main_process:
+                os.makedirs(os.path.join(self.output_path,
+                            f"checkpoint_model_{self.step:06d}"), exist_ok=True)
+                torch.save(state_dict, os.path.join(self.output_path,
+                        f"checkpoint_model_{self.step:06d}", "high_noise_model.pt"))
+                print("Model saved to", os.path.join(self.output_path,
+                    f"checkpoint_model_{self.step:06d}", "high_noise_model.pt"))
+
+            generator_state_dict = fsdp_state_dict(
+                self.model.generator.low_noise_model)
+            state_dict = {
+                "generator": generator_state_dict
+            }
+            if self.is_main_process:
+                os.makedirs(os.path.join(self.output_path,
+                            f"checkpoint_model_{self.step:06d}"), exist_ok=True)
+                torch.save(state_dict, os.path.join(self.output_path,
+                        f"checkpoint_model_{self.step:06d}", "low_noise_model.pt"))
+                print("Model saved to", os.path.join(self.output_path,
+                    f"checkpoint_model_{self.step:06d}", "low_noise_model.pt"))
 
     def train_one_step(self):
-        VISUALIZE = self.step % 10 == 0
+        VISUALIZE = self.step % 50 == 0
         self.model.eval()  # prevent any randomness (e.g. dropout)
 
+        # print('get next batch')
         # Step 1: Get the next batch of text prompts
         batch = next(self.dataloader)
+        # print('batch', batch)
         text_prompts = batch["prompts"]
+        print('batch["ode_latent"].shape', batch["ode_latent"].shape)
+        # ode_latent = batch["ode_latent"][:, [0, 6, 12, 18, -1]].to(
+        #     device=self.device, dtype=self.dtype)
         ode_latent = batch["ode_latent"].to(
             device=self.device, dtype=self.dtype)
+        print('ode_latent', ode_latent.shape)
 
         # Step 2: Extract the conditional infos
         with torch.no_grad():
             conditional_dict = self.model.text_encoder(
                 text_prompts=text_prompts)
+        # print('train_one_step 1')
 
         # Step 3: Train the generator
         generator_loss, log_dict = self.model.generator_loss(
@@ -224,7 +286,9 @@ class Trainer:
 
     def train(self):
         while True:
+            # print(f"Step {self.step} started")
             self.train_one_step()
+            print(f"Step {self.step} finished")
             if (not self.config.no_save) and self.step % self.config.log_iters == 0:
                 self.save()
                 torch.cuda.empty_cache()

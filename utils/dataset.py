@@ -36,7 +36,6 @@ class TextDataset(Dataset):
 
 class ODERegressionLMDBDataset(Dataset):
     def __init__(self, data_path: str, max_pair: int = int(1e8)):
-        print(f"data_path: {data_path}")
         self.env = lmdb.open(data_path, readonly=True,
                              lock=False, readahead=False, meminit=False)
 

@@ -1,8 +1,8 @@
-generator_ckpt: checkpoints/ode_init.pt
+generator_ckpt: /mnt/weka/home/hao.zhang/wl/Self-Forcing/logs/self_forcing_ode_init_1.3B/checkpoint_model_009000/model.pt
 generator_fsdp_wrap_strategy: size
 real_score_fsdp_wrap_strategy: size
 fake_score_fsdp_wrap_strategy: size
-real_name: Wan2.1-T2V-1.3B
+real_name: Wan2.1-T2V-14B
 text_encoder_fsdp_wrap_strategy: size
 denoising_step_list:
 - 1000
@@ -20,7 +20,7 @@ seed: 0
 wandb_host: https://api.wandb.ai
 wandb_key: 8d9f4b39abd68eb4e29f6fc010b7ee71a2207cde
 wandb_entity: wlsaidhi
-wandb_project: wan_ode_init
+wandb_project: SF_distillation
 sharding_strategy: hybrid_full
 lr: 2.0e-06
 lr_critic: 4.0e-07
@@ -33,7 +33,7 @@ batch_size: 1
 ema_weight: 0.99
 ema_start_step: 200
 total_batch_size: 64
-log_iters: 50
+log_iters: 100
 negative_prompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走'
 dfake_gen_update_ratio: 5
 image_or_video_shape:

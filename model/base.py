@@ -17,11 +17,31 @@ class BaseModel(nn.Module):
         self.device = device
         self.args = args
         self.dtype = torch.bfloat16 if args.mixed_precision else torch.float32
-        if hasattr(args, "denoising_step_list"):
-            self.denoising_step_list = torch.tensor(args.denoising_step_list, dtype=torch.long)
+
+        self.moe = getattr(args, "model_kwargs", {}).get("moe", False)
+        print(f"BaseModel moe: {self.moe}")
+        if self.moe:
+            denoising_step_list_high = getattr(args, "denoising_step_list_high", [])
+            denoising_step_list_low = getattr(args, "denoising_step_list_low", [])
+            assert len(denoising_step_list_high) > 1 and len(denoising_step_list_low) > 1
+            print(f"denoising_step_list_high: {denoising_step_list_high}")
+            print(f"denoising_step_list_low: {denoising_step_list_low}")
+            self.denoising_step_list_high = torch.tensor(denoising_step_list_high, dtype=torch.long)
+            self.denoising_step_list_low = torch.tensor(denoising_step_list_low, dtype=torch.long)
+            print(f"warp_denoising_step: {args.warp_denoising_step}")
             if args.warp_denoising_step:
                 timesteps = torch.cat((self.scheduler.timesteps.cpu(), torch.tensor([0], dtype=torch.float32)))
-                self.denoising_step_list = timesteps[1000 - self.denoising_step_list]
+                self.denoising_step_list_high = timesteps[1000 - self.denoising_step_list_high]
+                self.denoising_step_list_low = timesteps[1000 - self.denoising_step_list_low]
+            print(f"final denoising_step_list_high: {self.denoising_step_list_high}")
+            print(f"final denoising_step_list_low: {self.denoising_step_list_low}")
+
+        else:
+            if hasattr(args, "denoising_step_list"):
+                self.denoising_step_list = torch.tensor(args.denoising_step_list, dtype=torch.long)
+                if args.warp_denoising_step:
+                    timesteps = torch.cat((self.scheduler.timesteps.cpu(), torch.tensor([0], dtype=torch.float32)))
+                    self.denoising_step_list = timesteps[1000 - self.denoising_step_list]
 
     def _initialize_models(self, args, device):
         self.real_model_name = getattr(args, "real_name", "Wan2.1-T2V-1.3B")
@@ -52,7 +72,7 @@ class BaseModel(nn.Module):
             batch_size: int,
             num_frame: int,
             num_frame_per_block: int,
-            uniform_timestep: bool = False
+            uniform_timestep: bool = False,
     ) -> torch.Tensor:
         """
         Randomly generate a timestep tensor based on the generator's task type. It uniformly samples a timestep
@@ -61,6 +81,7 @@ class BaseModel(nn.Module):
         - If not uniform_timestep, it will use a different timestep for each block.
         """
         if uniform_timestep:
+            assert not self.moe
             timestep = torch.randint(
                 min_timestep,
                 max_timestep,

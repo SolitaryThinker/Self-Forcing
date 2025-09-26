@@ -122,18 +122,25 @@ class WanDiffusionWrapper(torch.nn.Module):
             sink_size=0,
             moe=False,
             boundary_ratio=0.875,
+            model_dir=None,
     ):
         super().__init__()
 
         self.moe = moe
         self.current_model_noise_level = 'high'
         self.boundary_ratio = boundary_ratio
+        if model_dir is None:
+            model_dir = f"wan_models/{model_name}/"
         if not moe:
+            print("Not MOE Model")
+            # path = f"{model_dir}/{model_name}/"
+            path = f"{model_dir}/"
+            print(f"path: {path}")
             if is_causal:
                 self.model = CausalWanModel.from_pretrained(
-                    f"wan_models/{model_name}/", local_attn_size=local_attn_size, sink_size=sink_size)
+                    path, local_attn_size=local_attn_size, sink_size=sink_size)
             else:
-                self.model = WanModel.from_pretrained(f"wan_models/{model_name}/")
+                self.model = WanModel.from_pretrained(path)
             self.model.eval()
         else:
             print("MOE Model")
@@ -255,8 +262,11 @@ class WanDiffusionWrapper(torch.nn.Module):
         concat_time_embeddings: Optional[bool] = False,
         clean_x: Optional[torch.Tensor] = None,
         aug_t: Optional[torch.Tensor] = None,
-        cache_start: Optional[int] = None
+        cache_start: Optional[int] = None,
+        force_high_noise: bool = False,
+        force_low_noise: bool = False
     ) -> torch.Tensor:
+        assert not (force_high_noise and force_low_noise)
         prompt_embeds = conditional_dict["prompt_embeds"]
 
         # [B, F] -> [B]
@@ -272,15 +282,33 @@ class WanDiffusionWrapper(torch.nn.Module):
         print(f"input_timestep.shape: {input_timestep.shape}")
         # print(f"timestep: {timestep}")
 
+        print(f"force_high_noise: {force_high_noise}")
+        print(f"force_low_noise: {force_low_noise}")
         if self.moe:
-            if input_timestep >= self.boundary_ratio*1000:
-                print("Using high noise model")
-                self.current_model_noise_level = 'high'
-                self.model = self.high_noise_model
+            if force_high_noise or force_low_noise:
+                print("force_high_noise or force_low_noise is True")
+                if force_high_noise:
+                    print("Using high noise model")
+                    self.current_model_noise_level = 'high'
+                    self.model = self.high_noise_model
+                elif force_low_noise:
+                    print("Using low noise model")
+                    self.current_model_noise_level = 'low'
+                    self.model = self.low_noise_model
+                else:
+                    raise ValueError("force_high_noise and force_low_noise cannot be both False")
             else:
-                print("Using low noise model")
-                self.current_model_noise_level = 'low'
-                self.model = self.low_noise_model
+            # force_high_noise = force_high_noise.item()
+            # force_low_noise = force_low_noise.item()
+                print("inferring from boundary")
+                if input_timestep >= self.boundary_ratio*1000:
+                    print("Using high noise model")
+                    self.current_model_noise_level = 'high'
+                    self.model = self.high_noise_model
+                elif input_timestep < self.boundary_ratio*1000:
+                    print("Using low noise model")
+                    self.current_model_noise_level = 'low'
+                    self.model = self.low_noise_model
 
 
         logits = None

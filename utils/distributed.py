@@ -78,6 +78,7 @@ def launch_distributed_job(backend: str = "nccl"):
     world_size = int(os.environ["WORLD_SIZE"])
     host = os.environ["MASTER_ADDR"]
     port = int(os.environ["MASTER_PORT"])
+    print(f"rank: {rank}, local_rank: {local_rank}, world_size: {world_size}, host: {host}, port: {port}")
 
     if ":" in host:  # IPv6
         init_method = f"tcp://[{host}]:{port}"
