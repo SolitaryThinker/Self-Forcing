@@ -56,7 +56,8 @@ def main():
 
     # for index in tqdm(range(int(math.ceil(len(dataset) / dist.get_world_size()))), disable=dist.get_rank() != 0):
     for index in tqdm(range(int(math.ceil(len(dataset))))):
-        prompt_index = index * dist.get_world_size() + dist.get_rank()
+        # prompt_index = index * dist.get_world_size() + dist.get_rank()
+        prompt_index = index
         if prompt_index >= len(dataset):
             continue
         prompt = dataset[prompt_index]
