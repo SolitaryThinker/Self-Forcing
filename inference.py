@@ -68,7 +68,16 @@ else:
 
 if args.checkpoint_path:
     state_dict = torch.load(args.checkpoint_path, map_location="cpu")
-    pipeline.generator.load_state_dict(state_dict['generator' if not args.use_ema else 'generator_ema'])
+    if args.use_ema:
+        state_dict = state_dict['generator_ema']
+        unwrapped_state_dict = {}
+        if True:
+            for k, v in state_dict.items():
+                unwrapped_state_dict[k.replace("_fsdp_wrapped_module.", "")] = v
+            state_dict = unwrapped_state_dict
+    else:
+        state_dict = state_dict['generator']
+    pipeline.generator.load_state_dict(state_dict)
 
 pipeline = pipeline.to(dtype=torch.bfloat16)
 if low_memory:

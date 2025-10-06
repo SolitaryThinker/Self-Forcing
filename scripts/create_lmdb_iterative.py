@@ -23,11 +23,17 @@ def main():
 
     args = parser.parse_args()
 
-    all_files = sorted(glob.glob(os.path.join(args.data_path, "*.pt")))
+    all_files = sorted(glob.glob('**/*.pt', root_dir=args.data_path, recursive=True))
+    all_files = [os.path.join(args.data_path, file) for file in all_files]
+
+    # print(all_files)
+    print(len(all_files))
+
 
     # figure out the maximum map size needed
     total_array_size = 5000000000000  # adapt to your need, set to 5TB by default
 
+    os.makedirs(args.lmdb_path, exist_ok=True)
     env = lmdb.open(args.lmdb_path, map_size=total_array_size * 2)
 
     counter = 0
