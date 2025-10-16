@@ -76,7 +76,7 @@ class ODERegression(BaseModel):
             batch_size,
             num_frames,
             self.num_frame_per_block,
-            uniform_timestep=False
+            uniform_timestep=True
         )
         if self.args.i2v:
             index[:, 0] = len(self.denoising_step_list) - 1

@@ -179,6 +179,25 @@ class Trainer:
         self.max_grad_norm_critic = getattr(config, "max_grad_norm_critic", 10.0)
         self.previous_time = None
 
+        ##############################################################################################################
+        print(f"Profiling enabled. Traces will be saved to: {config.trace_dir}")
+        self.profiler = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True,
+            with_flops=True,
+            schedule=torch.profiler.schedule(wait=2, warmup=2, active=2),
+            # on_trace_ready=trace_handler,
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(config.trace_dir,
+                                                                    use_gzip=True),
+        )
+
+
+
     def save(self):
         print("Start gathering distributed model states...")
         generator_state_dict = fsdp_state_dict(
@@ -312,7 +331,10 @@ class Trainer:
     def train(self):
         start_step = self.step
 
-        while True:
+        # while True:
+        self.profiler.start()
+        for i in range(7):
+            print(f"Step {self.step}")
             TRAIN_GENERATOR = self.step % self.config.dfake_gen_update_ratio == 0
 
             # Train the generator
@@ -386,3 +408,10 @@ class Trainer:
                     if not self.disable_wandb:
                         wandb.log({"per iteration time": current_time - self.previous_time}, step=self.step)
                     self.previous_time = current_time
+            print(f"Step {self.step} profiler step")
+            self.profiler.step()
+            print(f"Step {self.step} finished")
+        print(f"stopping profiler")
+        self.profiler.stop()
+        print(f"profiler stopped")
+        print(f"Training finished")

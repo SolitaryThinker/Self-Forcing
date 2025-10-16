@@ -1,0 +1,38 @@
+# model_name: causal_wan
+# generator_ckpt: /mnt/weka/home/hao.zhang/wl/Self-Forcing/checkpoints/ode_init.pt
+generator_fsdp_wrap_strategy: size
+real_score_fsdp_wrap_strategy: size
+fake_score_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+real_name: Wan2.1-T2V-1.3B
+generator_grad:
+  model: true
+denoising_step_list:
+- 1000
+- 750
+- 500
+- 250
+mixed_precision: true
+seed: 0
+wandb_host: https://api.wandb.ai
+wandb_key: 8d9f4b39abd68eb4e29f6fc010b7ee71a2207cde
+wandb_entity: wlsaidhi
+wandb_project: wan_ode_init
+wandb_name: SF_wan_causal_ode_1.3B_bz128_1e-5_v3_5e-5
+sharding_strategy: hybrid_full
+# lr: 2.0e-06
+lr: 3e-5
+beta1: 0.9
+beta2: 0.999
+data_path: /mnt/sharefs/users/hao.zhang/wl/dataset/sf_ode/ode_pairs_lmdb_last_16k_extended_en_v3_shift5/
+batch_size: 4
+total_batch_size: 128
+log_iters: 100
+output_path: /mnt/sharefs/users/hao.zhang/wl/manual_ode_init_bz128_v3_5e-5
+distribution_loss: ode
+trainer: ode
+gradient_checkpointing: true
+num_frame_per_block: 3
+warp_denoising_step: true
+model_kwargs:
+  timestep_shift: 5.0
