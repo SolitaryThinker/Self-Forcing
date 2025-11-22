@@ -1,0 +1,34 @@
+model_name: causal_wan
+generator_grad:
+  model: true
+denoising_step_list:
+- 1000
+- 750
+- 0
+denoising_step_index:
+- 0
+- 1
+- 4
+warp_denoising_step: true # need to remove - 0 in denoising_step_list if warp_denoising_step is true
+generator_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+mixed_precision: true
+seed: 0
+wandb_host: https://api.wandb.ai
+wandb_key: 8d9f4b39abd68eb4e29f6fc010b7ee71a2207cde
+wandb_entity: wlsaidhi
+wandb_project: wan_official_ode_init
+wandb_name: wan_official_ode_init_high_1_3_x0
+sharding_strategy: hybrid_full
+lr: 2.0e-06
+beta1: 0.9
+beta2: 0.999
+data_path: /mnt/sharefs/users/hao.zhang/wl/dataset/sf_ode/ode_pairs_lmdb_last_16k_extended_en_v3_shift5
+batch_size: 4
+log_iters: 500
+distribution_loss: ode
+trainer: ode
+gradient_checkpointing: true
+num_frame_per_block: 3
+model_kwargs:
+  timestep_shift: 5.0
