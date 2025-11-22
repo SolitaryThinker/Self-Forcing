@@ -28,6 +28,11 @@ class ODERegression(BaseModel):
             self.generator.load_state_dict(
                 state_dict, strict=True
             )
+        
+        self.denoising_step_index = torch.tensor(args.denoising_step_index, dtype=torch.long, device=device)
+
+        print('self.denoising_step_index', self.denoising_step_index)
+        print('self.denoising_step_list', self.denoising_step_list)
 
         self.num_frame_per_block = getattr(args, "num_frame_per_block", 1)
 
@@ -43,7 +48,7 @@ class ODERegression(BaseModel):
         # Step 2: Initialize all hyperparameters
         self.timestep_shift = getattr(args, "timestep_shift", 1.0)
 
-    def _initialize_models(self, args):
+    def _initialize_models(self, args, device):
         self.generator = WanDiffusionWrapper(**getattr(args, "model_kwargs", {}), is_causal=True)
         self.generator.model.requires_grad_(True)
 
@@ -52,6 +57,9 @@ class ODERegression(BaseModel):
 
         self.vae = WanVAEWrapper()
         self.vae.requires_grad_(False)
+
+        self.scheduler = self.generator.get_scheduler()
+        self.scheduler.timesteps = self.scheduler.timesteps.to(device)
 
     @torch.no_grad()
     def _prepare_generator_input(self, ode_latent: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -84,6 +92,8 @@ class ODERegression(BaseModel):
                 -1, -1, -1, num_channels, height, width).to(self.device)
         ).squeeze(1)
 
+        index = index.cpu()
+
         timestep = self.denoising_step_list[index].to(self.device)
 
         # if self.extra_noise_step > 0:
@@ -112,6 +122,9 @@ class ODERegression(BaseModel):
         """
         # Step 1: Run generator on noisy latents
         target_latent = ode_latent[:, -1]
+
+        ode_latent = ode_latent[:, self.denoising_step_index]
+        assert ode_latent.shape[1] == len(self.denoising_step_list)
 
         noisy_input, timestep = self._prepare_generator_input(
             ode_latent=ode_latent)
