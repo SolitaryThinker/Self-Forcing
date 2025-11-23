@@ -13,11 +13,10 @@ Example usages:
         --output-dir /data/shards \
         --rows-per-shard 50000
 
-    # Merge shards back together, overwriting duplicate keys
+    # Merge shards back together (fails fast on duplicate keys)
     python shard_lmdb.py merge \
         --shards-dir /data/shards \
-        --output /data/full_dataset_merged \
-        --on-duplicate overwrite
+        --output /data/full_dataset_merged
 """
 from __future__ import annotations
 
@@ -103,18 +102,6 @@ def parse_args() -> argparse.Namespace:
         help="target number of shards; overrides --rows-per-shard",
     )
     shard_parser.add_argument(
-        "--map-size",
-        type=positive_int,
-        default=DEFAULT_MAP_SIZE,
-        help="map size (bytes) to allocate for each shard LMDB",
-    )
-    shard_parser.add_argument(
-        "--txn-size",
-        type=positive_int,
-        default=DEFAULT_TXN_SIZE,
-        help="number of rows to buffer per write transaction",
-    )
-    shard_parser.add_argument(
         "--overwrite-output",
         action="store_true",
         help="allow non-empty output directory by wiping it first",
@@ -137,24 +124,6 @@ def parse_args() -> argparse.Namespace:
         help="path to an individual shard (can be used multiple times)",
     )
     merge_parser.add_argument("--output", required=True, help="path for merged LMDB directory")
-    merge_parser.add_argument(
-        "--map-size",
-        type=positive_int,
-        default=DEFAULT_MAP_SIZE,
-        help="map size (bytes) for the merged LMDB",
-    )
-    merge_parser.add_argument(
-        "--txn-size",
-        type=positive_int,
-        default=DEFAULT_TXN_SIZE,
-        help="number of rows to buffer per write transaction",
-    )
-    merge_parser.add_argument(
-        "--on-duplicate",
-        choices=("error", "skip", "overwrite"),
-        default="error",
-        help="behavior when duplicate keys are encountered during merge",
-    )
     merge_parser.add_argument(
         "--overwrite-output",
         action="store_true",
@@ -280,7 +249,7 @@ def shard_lmdb(args: argparse.Namespace) -> None:
         shard_path.mkdir(parents=True, exist_ok=True)
         log_info("Starting shard %s", shard_path)
         rows_in_current = 0
-        return open_lmdb_env(shard_path, readonly=False, map_size=args.map_size)
+        return open_lmdb_env(shard_path, readonly=False, map_size=DEFAULT_MAP_SIZE)
 
     try:
         shard_env = start_new_shard()
@@ -307,7 +276,7 @@ def shard_lmdb(args: argparse.Namespace) -> None:
                         rows_written,
                         shard_index + 1,
                     )
-                if rows_written % args.txn_size == 0:
+                if rows_written % DEFAULT_TXN_SIZE == 0:
                     txn.commit()
                     write_txn = None
 
@@ -365,7 +334,7 @@ def merge_lmdb(args: argparse.Namespace) -> None:
     ensure_empty_dir(output_path, overwrite=args.overwrite_output)
 
     log_info("Merging %d shard(s) into %s", len(shard_paths), output_path)
-    target_env = open_lmdb_env(output_path, readonly=False, map_size=args.map_size)
+    target_env = open_lmdb_env(output_path, readonly=False, map_size=DEFAULT_MAP_SIZE)
     total_written = 0
 
     try:
@@ -383,18 +352,13 @@ def merge_lmdb(args: argparse.Namespace) -> None:
                             buffered = 0
                         txn = write_txn
                         assert txn is not None
-                        if args.on_duplicate == "error":
-                            success = txn.put(key, value, overwrite=False)
-                            if not success:
-                                txn.abort()
-                                write_txn = None
-                                raise ValueError(
-                                    f"Duplicate key encountered: {key!r} in shard {shard}"
-                                )
-                        elif args.on_duplicate == "skip":
-                            txn.put(key, value, overwrite=False)
-                        else:  # overwrite
-                            txn.put(key, value, overwrite=True)
+                        success = txn.put(key, value, overwrite=False)
+                        if not success:
+                            txn.abort()
+                            write_txn = None
+                            raise ValueError(
+                                f"Duplicate key encountered: {key!r} in shard {shard}"
+                            )
                         total_written += 1
                         buffered += 1
                         if total_written % args.log_every == 0:
@@ -403,7 +367,7 @@ def merge_lmdb(args: argparse.Namespace) -> None:
                                 total_written,
                                 shard,
                             )
-                        if buffered >= args.txn_size:
+                        if buffered >= DEFAULT_TXN_SIZE:
                             txn.commit()
                             write_txn = None
                     if write_txn is not None:

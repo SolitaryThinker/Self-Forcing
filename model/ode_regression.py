@@ -29,10 +29,6 @@ class ODERegression(BaseModel):
                 state_dict, strict=True
             )
         
-        self.denoising_step_index = torch.tensor(args.denoising_step_index, dtype=torch.long, device=device)
-
-        print('self.denoising_step_index', self.denoising_step_index)
-        print('self.denoising_step_list', self.denoising_step_list)
 
         self.num_frame_per_block = getattr(args, "num_frame_per_block", 1)
 
@@ -122,9 +118,6 @@ class ODERegression(BaseModel):
         """
         # Step 1: Run generator on noisy latents
         target_latent = ode_latent[:, -1]
-
-        ode_latent = ode_latent[:, self.denoising_step_index]
-        assert ode_latent.shape[1] == len(self.denoising_step_list)
 
         noisy_input, timestep = self._prepare_generator_input(
             ode_latent=ode_latent)
