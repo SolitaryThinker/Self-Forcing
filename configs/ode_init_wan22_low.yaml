@@ -1,0 +1,64 @@
+# model_name: causal_wan
+# generator_ckpt: checkpoints/ode_init.pt
+generator_fsdp_wrap_strategy: size
+real_score_fsdp_wrap_strategy: size
+fake_score_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+# real_name: Wan2.2-T2V-A14B
+real_name: low_noise_model
+generator_cpu_offload: true
+text_encoder_cpu_offload: true
+generator_grad:
+  model: true
+denoising_step_list:
+- 350
+- 275
+- 200
+- 125
+# denoising_step_list_high:
+# # - 1000
+# # - 875
+# # - 750
+# # - 625
+# # - 500
+# - 1000
+# - 850
+# - 700
+# - 550
+# denoising_step_list_low:
+# # - 350
+# # - 250
+# # - 125
+# - 350
+# - 275
+# - 200
+# - 125
+mixed_precision: true
+seed: 0
+wandb_host: https://api.wandb.ai
+wandb_key: 8d9f4b39abd68eb4e29f6fc010b7ee71a2207cde
+wandb_entity: wlsaidhi
+wandb_project: wan_ode_init
+wandb_name: SF_wan_causal_ode_low
+sharding_strategy: full
+# sharding_strategy: hybrid_full
+# lr: 2.0e-06
+lr: 1e-5
+beta1: 0.9
+beta2: 0.999
+# data_path: sf_ode_init_run
+# data_path: /mnt/sharefs/users/hao.zhang/klin/preproc/data/sf-lmdb-a14B-16k/
+data_path: /mnt/sharefs/users/hao.zhang/klin/preproc/data/sf-lmdb-a14-16k-trunc_low/
+batch_size: 4
+total_batch_size: 128
+log_iters: 500
+output_path: manual_ode_init
+distribution_loss: ode
+trainer: ode
+gradient_checkpointing: true
+num_frame_per_block: 3
+warp_denoising_step: true
+model_kwargs:
+  timestep_shift: 12.0
+  moe: false
+  model_dir: /mnt/sharefs/users/hao.zhang/wl/models/Wan2.2-T2V-A14B/low_noise_model/

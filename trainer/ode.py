@@ -119,6 +119,8 @@ class Trainer:
         total_batch_size = getattr(config, "total_batch_size", None)
         if total_batch_size is not None:
             assert total_batch_size == config.batch_size * self.world_size, "Gradient accumulation is not supported for ODE training"
+        print(f"total_batch_size: {total_batch_size}")
+        print(f"batch_size: {config.batch_size}")
         self.dataloader = cycle(dataloader)
 
         self.step = 0

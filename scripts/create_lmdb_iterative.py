@@ -97,6 +97,9 @@ def process_data_dict(data_dict, seen_prompts, indexing_type=None):
                 video = video[:, [0, 6, 12, 18, -1]]
             elif indexing_type == 'low':
                 video = video[:, [26, 29, 32, 35, -1]]
+            elif indexing_type == 'high_xb':
+                # we use the highest timestep from low as the target, replacing -1
+                video = video[:, [0, 6, 12, 18, 26]]
             else:
                 raise ValueError(f"Invalid indexing type: {indexing_type}")
         # video = video[:, [0, 6, 12, 18, -1]]
@@ -152,7 +155,7 @@ def main():
     parser.add_argument("--lmdb_path", type=str,
                         required=True, help="path to lmdb")
     parser.add_argument("--indexing_type", type=str,
-                        required=False, choices=['high', 'low', None], help="indexing type", default=None)
+                        required=False, choices=['high', 'low', 'high_xb', None], help="indexing type", default=None)
     parser.add_argument("--include_text_embedding",
                         action='store_true',
                         required=False, help="whether to include text embedding", default=False)
@@ -210,20 +213,20 @@ def main():
 
     for index, file in tqdm(enumerate(all_files)):
         # read from disk
-        # try:
-        data_dict = torch.load(file)
+        try:
+            data_dict = torch.load(file)
 
-        if args.include_text_embedding:
-            data_dict = process_data_dict_with_text_embedding(data_dict, seen_prompts, indexing_type=args.indexing_type)
-        else:
-            data_dict = process_data_dict(data_dict, seen_prompts, indexing_type=args.indexing_type)
+            if args.include_text_embedding:
+                data_dict = process_data_dict_with_text_embedding(data_dict, seen_prompts, indexing_type=args.indexing_type)
+            else:
+                data_dict = process_data_dict(data_dict, seen_prompts, indexing_type=args.indexing_type)
 
-        # write to lmdb file
-        store_arrays_to_lmdb(env, data_dict, start_index=counter)
-        counter += len(data_dict['prompts'])
-        # except Exception as e:
-        #     print(f"Error processing {file}: {e}")
-        #     continue
+            # write to lmdb file
+            store_arrays_to_lmdb(env, data_dict, start_index=counter)
+            counter += len(data_dict['prompts'])
+        except Exception as e:
+            print(f"Error processing {file}: {e}")
+            continue
         # if index > 1400: 
         # if index > 1: 
         #     break
