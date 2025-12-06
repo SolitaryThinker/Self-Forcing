@@ -22,12 +22,12 @@ class WanTextEncoder(torch.nn.Module):
             device=torch.device('cpu')
         ).eval().requires_grad_(False)
         self.text_encoder.load_state_dict(
-            torch.load("wan_models/Wan2.1-T2V-1.3B/models_t5_umt5-xxl-enc-bf16.pth",
+            torch.load("/mnt/sharefs/users/hao.zhang/wei/wan_models/Wan2.2-T2V-A14B/models_t5_umt5-xxl-enc-bf16.pth",
                        map_location='cpu', weights_only=False)
         )
 
         self.tokenizer = HuggingfaceTokenizer(
-            name="wan_models/Wan2.1-T2V-1.3B/google/umt5-xxl/", seq_len=512, clean='whitespace')
+            name="/mnt/sharefs/users/hao.zhang/wei/wan_models/Wan2.2-T2V-A14B/google/umt5-xxl/", seq_len=512, clean='whitespace')
 
     @property
     def device(self):
@@ -66,7 +66,7 @@ class WanVAEWrapper(torch.nn.Module):
 
         # init model
         self.model = _video_vae(
-            pretrained_path="wan_models/Wan2.1-T2V-1.3B/Wan2.1_VAE.pth",
+            pretrained_path="/mnt/sharefs/users/hao.zhang/wei/wan_models/Wan2.2-T2V-A14B/Wan2.1_VAE.pth",
             z_dim=16,
         ).eval().requires_grad_(False)
 

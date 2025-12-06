@@ -8,15 +8,14 @@
 #SBATCH --gres=gpu:8
 #SBATCH --cpus-per-task=128
 #SBATCH --mem=1440G
-#SBATCH --output=ode_sf_output/sf_ode_official_8n_wan22_high.out
-#SBATCH --error=ode_sf_output/sf_ode_official_8n_wan22_high.err
+#SBATCH --output=ode_sf_output/sf_ode_official_8n_wan22_high_%j.out
+#SBATCH --error=ode_sf_output/sf_ode_official_8n_wan22_high_%j.err
 #SBATCH --exclusive
 set -e -x
-export HOME=/mnt/weka/home/hao.zhang/wl/
 
-# source ~/conda/miniconda/bin/activate
-# conda activate wl-sf2
-
+source ~/conda/miniconda/bin/activate
+conda activate self_forcing
+export HOME=/mnt/weka/home/hao.zhang/wei/
 
 # Basic Info
 export WANDB_MODE="online"
@@ -32,7 +31,7 @@ export CUDA_VISIBLE_DEVICES=$SLURM_LOCALID
 export TOKENIZERS_PARALLELISM=false
 # export WANDB_BASE_URL="https://api.wandb.ai"
 # export WANDB_MODE=online
-export WANDB_API_KEY='8d9f4b39abd68eb4e29f6fc010b7ee71a2207cde'
+export WANDB_API_KEY='50632ebd88ffd970521cec9ab4a1a2d7e85bfc45'
 
 echo "MASTER_ADDR: $MASTER_ADDR"
 echo "NODE_RANK: $NODE_RANK"
@@ -49,5 +48,5 @@ srun torchrun \
 --rdzv_endpoint="$MASTER_ADDR:$MASTER_PORT" \
   train.py \
   --config_path configs/official_ode_config_wan22_high.yaml \
-  --logdir /mnt/sharefs/users/hao.zhang/wl/release/official_ode_init_wan22_high
+  --logdir /mnt/weka/home/hao.zhang/official_ode_init_wan22_high_4steps
 

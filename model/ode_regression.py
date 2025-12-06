@@ -29,6 +29,10 @@ class ODERegression(BaseModel):
                 state_dict, strict=True
             )
         
+        self.denoising_step_index = torch.tensor(args.denoising_step_index, dtype=torch.long, device=device)
+
+        print('self.denoising_step_index', self.denoising_step_index)
+        print('self.denoising_step_list', self.denoising_step_list)
 
         self.num_frame_per_block = getattr(args, "num_frame_per_block", 1)
 
@@ -70,6 +74,10 @@ class ODERegression(BaseModel):
         """
         batch_size, num_denoising_steps, num_frames, num_channels, height, width = ode_latent.shape
 
+        # Validate that num_denoising_steps matches the expected length
+        assert num_denoising_steps == len(self.denoising_step_list), \
+            f"Mismatch: ode_latent has {num_denoising_steps} denoising steps, but denoising_step_list has {len(self.denoising_step_list)} steps"
+
         # Step 1: Randomly choose a timestep for each frame
         index = self._get_timestep(
             0,
@@ -81,6 +89,10 @@ class ODERegression(BaseModel):
         )
         if self.args.i2v:
             index[:, 0] = len(self.denoising_step_list) - 1
+
+        # Validate indices are in bounds before gather operation
+        assert (index >= 0).all() and (index < num_denoising_steps).all(), \
+            f"Index out of bounds: index range [{index.min().item()}, {index.max().item()}], but num_denoising_steps={num_denoising_steps}"
 
         noisy_input = torch.gather(
             ode_latent, dim=1,
@@ -118,6 +130,15 @@ class ODERegression(BaseModel):
         """
         # Step 1: Run generator on noisy latents
         target_latent = ode_latent[:, -1]
+
+        # Validate denoising_step_index is in bounds before indexing
+        original_num_steps = ode_latent.shape[1]
+        assert (self.denoising_step_index >= 0).all() and (self.denoising_step_index < original_num_steps).all(), \
+            f"denoising_step_index out of bounds: index range [{self.denoising_step_index.min().item()}, {self.denoising_step_index.max().item()}], but ode_latent has {original_num_steps} steps"
+
+        ode_latent = ode_latent[:, self.denoising_step_index]
+        assert ode_latent.shape[1] == len(self.denoising_step_list), \
+            f"After indexing, ode_latent.shape[1]={ode_latent.shape[1]} but len(denoising_step_list)={len(self.denoising_step_list)}"
 
         noisy_input, timestep = self._prepare_generator_input(
             ode_latent=ode_latent)
